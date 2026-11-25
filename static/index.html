@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schach-Engine</title>
+<style>
+:root{--bg:#f4f1ea;--panel:#fff;--ink:#22201c;--mute:#6f6a60;--line:#e2ddd2;--light:#eedbb5;--dark:#b58863;
+  --sel:rgba(255,213,0,.55);--last:rgba(155,199,0,.45);--check:rgba(220,40,40,.7);--accent:#2f6f4f;
+  --brill:#1baaa6;--great:#5c8bb0;--best:#5f9e3a;--inacc:#e6a817;--mist:#e07b26;--blun:#c8352b}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1c1a;--panel:#282724;--ink:#ece8df;--mute:#a39e93;--line:#3a3833}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:14px 16px;font-weight:650;font-size:19px}
+header span{color:var(--mute);font-weight:400;font-size:14px;margin-left:8px}
+main{display:flex;gap:18px;padding:0 16px 24px;flex-wrap:wrap;align-items:flex-start}
+.boardwrap{display:flex;gap:8px}
+.evalbar{width:22px;border-radius:4px;border:1px solid #8888;overflow:hidden;background:#3a3833;position:relative;display:flex;flex-direction:column}
+.evalbar .b{background:#3a3833;transition:height .4s}
+.evalbar .w{background:#f2f2f2;flex:1}
+.evalbar .t{position:absolute;left:0;right:0;font-size:10px;text-align:center;font-weight:700}
+#board{position:relative;width:min(88vw,560px);aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+  border-radius:4px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.18);user-select:none}
+.sq{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sq.l{background:var(--light)}.sq.d{background:var(--dark)}
+.sq.last::before,.sq.sel::before,.sq.chk::before{content:"";position:absolute;inset:0}
+.sq.last::before{background:var(--last)}.sq.sel::before{background:var(--sel)}
+.sq.chk::before{background:radial-gradient(circle,var(--check) 0,transparent 75%)}
+.sq .p{position:relative;font-size:min(9.5vw,60px);line-height:1;z-index:1}
+.sq .p.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,1px 1px 2px rgba(0,0,0,.6)}
+.sq .p.b{color:#111;text-shadow:0 0 1px #fff8}
+.sq .dot{position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(0,0,0,.22);z-index:2}
+.sq .ring{position:absolute;inset:4%;border-radius:50%;border:5px solid rgba(0,0,0,.22);z-index:2}
+.sq .co{position:absolute;font-size:11px;font-weight:600;opacity:.75;z-index:1}
+.sq .co.r{top:2px;left:3px}.sq .co.f{bottom:1px;right:4px}
+.sq.l .co{color:var(--dark)}.sq.d .co{color:var(--light)}
+.sq .badge{position:absolute;top:-2px;right:-2px;z-index:3;font:700 11px system-ui;color:#fff;border-radius:10px;padding:1px 5px;box-shadow:0 1px 3px #0006}
+svg#arrows{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4}
+#promo{position:absolute;inset:0;background:#0006;display:none;align-items:center;justify-content:center;z-index:10;gap:8px}
+#promo button{font-size:44px;width:70px;height:70px;border-radius:8px;border:0;background:var(--panel);cursor:pointer}
+aside{flex:1;min-width:300px;max-width:520px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.row:last-child{margin-bottom:0}
+button.b,select,input[type=text]{font:inherit;padding:7px 11px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+button.b{cursor:pointer}button.b:hover{border-color:var(--mute)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+input[type=text]{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:12px}
+label{color:var(--mute);font-size:13px}
+#status{font-weight:600}
+#thinking{display:none;color:var(--accent)}
+.best{font-size:22px;font-weight:700}
+.lines div{padding:5px 0;border-top:1px solid var(--line);font-size:13.5px}
+.lines .mv{font-weight:700;min-width:70px;display:inline-block}
+.lines .ev{font-family:ui-monospace,monospace;margin-right:6px}
+.lines .pv{color:var(--mute);display:block;font-size:12.5px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:9px;color:#fff;margin-left:4px}
+#moves{display:grid;grid-template-columns:36px 1fr 1fr;gap:2px 6px;max-height:240px;overflow:auto;font-size:14px}
+#moves .n{color:var(--mute)}
+#moves .m{padding:1px 4px;border-radius:4px;cursor:default}
+#review{font-size:14px;min-height:20px}
+.err{color:var(--blun)}
+</style>
+</head>
+<body>
+<header>♞ Schach-Engine <span>Stockfish · Analyse nach Chess.com-Logik</span></header>
+<main>
+  <div>
+    <div class="boardwrap">
+      <div class="evalbar" id="evalbar"><div class="b" id="evb" style="height:50%"></div><div class="w"></div><div class="t" id="evt" style="bottom:2px;color:#333">0.0</div></div>
+      <div id="board"><svg id="arrows" viewBox="0 0 800 800"></svg><div id="promo"></div></div>
+    </div>
+  </div>
+  <aside>
+    <div class="card">
+      <div class="row"><span id="status">Weiß am Zug</span><span id="thinking">⏳ Engine rechnet …</span></div>
+      <div class="row">
+        <label>Modus</label>
+        <select id="mode">
+          <option value="w">Ich spiele Weiß gegen KI</option>
+          <option value="b">Ich spiele Schwarz gegen KI</option>
+          <option value="none">Analyse (beide Seiten selbst)</option>
+          <option value="ai">KI gegen KI</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>KI-Stärke</label><input type="range" id="level" min="0" max="20" value="20"><span id="levelv">20 (Bester Zug)</span>
+      </div>
+      <div class="row">
+        <label>Denkzeit</label>
+        <select id="time"><option value="0.5">0,5 s</option><option value="1" selected>1 s</option><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option></select>
+        <label><input type="checkbox" id="autoAna" checked> Live-Analyse</label>
+      </div>
+      <div class="row">
+        <button class="b primary" id="bestBtn">💡 Besten Zug berechnen</button>
+        <button class="b" id="aiBtn">🤖 KI zieht</button>
+      </div>
+      <div class="row">
+        <button class="b" id="newBtn">Neue Partie</button>
+        <button class="b" id="undoBtn">↶ Zurück</button>
+        <button class="b" id="flipBtn">⇅ Drehen</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Engine-Analyse</h3>
+      <div id="analysis"><span style="color:var(--mute)">Klicke auf „Besten Zug berechnen“.</span></div>
+    </div>
+    <div class="card">
+      <h3>Letzter Zug</h3>
+      <div id="review">–</div>
+    </div>
+    <div class="card">
+      <h3>Partie</h3>
+      <div id="moves"></div>
+    </div>
+    <div class="card">
+      <h3>Stellung (FEN)</h3>
+      <div class="row"><input type="text" id="fen"><button class="b" id="fenBtn">Laden</button></div>
+    </div>
+  </aside>
+</main>
+<script>
+const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const GLYPH = {k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+const COLORS = {Brilliant:"var(--brill)",Great:"var(--great)",Best:"var(--best)",Excellent:"var(--best)",Good:"#8a9a5b",
+  Inaccuracy:"var(--inacc)",Mistake:"var(--mist)",Blunder:"var(--blun)",Forced:"#888"};
+const LABEL_DE = {Brilliant:"Brillant",Great:"Großartig",Best:"Bester Zug",Excellent:"Exzellent",Good:"Gut",
+  Inaccuracy:"Ungenauigkeit",Mistake:"Fehler",Blunder:"Patzer",Forced:"Erzwungen"};
+const $ = id => document.getElementById(id);
+
+let hist = [];            // [{fen, san, uci, review}]
+let state = null;         // Server-Status der aktuellen Stellung
+let flipped = false, sel = null, busy = false, anaToken = 0, lastBest = null;
+
+const de = s => s ? s.replace(/[NBRQK]/g, c => ({N:"S",B:"L",R:"T",Q:"D",K:"K"})[c]) : s;
+const fen = () => state ? state.fen : START;
+
+async function api(path, body){
+  const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j = await r.json(); if(!r.ok) throw new Error(j.error||"Fehler"); return j;
+}
+function parseBoard(f){
+  const rows=f.split(" ")[0].split("/"), b={};
+  rows.forEach((row,ri)=>{let fi=0;for(const ch of row){ if(/\d/.test(ch)) fi+=+ch; else { b["abcdefgh"[fi]+(8-ri)]=ch; fi++; } }});
+  return b;
+}
+function center(sq){ let f="abcdefgh".indexOf(sq[0]), r=+sq[1]-1; const x=flipped?7-f:f, y=flipped?r:7-r; return [x*100+50,y*100+50]; }
+
+function render(){
+  const board=$("board"), pieces=parseBoard(fen());
+  board.querySelectorAll(".sq").forEach(e=>e.remove());
+  const last = hist.length ? hist[hist.length-1] : null;
+  const targets = sel ? state.legal.filter(m=>m.startsWith(sel)).map(m=>m.slice(2,4)) : [];
+  let kingSq=null;
+  if(state && state.check){ const k=state.turn==="w"?"K":"k"; for(const s in pieces) if(pieces[s]===k) kingSq=s; }
+  for(let y=0;y<8;y++) for(let x=0;x<8;x++){
+    const f=flipped?7-x:x, r=flipped?y:7-y, sq="abcdefgh"[f]+(r+1);
+    const d=document.createElement("div");
+    d.className="sq "+((f+r)%2? "l":"d");
+    if(last && (last.uci.slice(0,2)===sq||last.uci.slice(2,4)===sq)) d.classList.add("last");
+    if(sel===sq) d.classList.add("sel");
+    if(kingSq===sq) d.classList.add("chk");
+    const p=pieces[sq];
+    if(p){ const s=document.createElement("span"); s.className="p "+(p===p.toUpperCase()?"w":"b"); s.textContent=GLYPH[p.toLowerCase()]; d.appendChild(s); }
+    if(targets.includes(sq)){ const t=document.createElement("div"); t.className=p?"ring":"dot"; d.appendChild(t); }
+    if(x===0){const c=document.createElement("span");c.className="co r";c.textContent=r+1;d.appendChild(c);}
+    if(y===7){const c=document.createElement("span");c.className="co f";c.textContent="abcdefgh"[f];d.appendChild(c);}
+    if(last && last.review && last.uci.slice(2,4)===sq && last.review.symbol){
+      const bd=document.createElement("span"); bd.className="badge"; bd.style.background=COLORS[last.review.label]; bd.textContent=last.review.symbol; d.appendChild(bd);
+    }
+    d.onclick=()=>clickSq(sq, p);
+    board.insertBefore(d, $("arrows"));
+  }
+  drawArrows();
+  renderStatus(); renderMoves();
+  $("fen").value=fen();
+}
+function drawArrows(){
+  const svg=$("arrows"); svg.innerHTML=`<defs><marker id="ah" markerWidth="4" markerHeight="4" refX="2.2" refY="2" orient="auto"><path d="M0,0 L4,2 L0,4 z" fill="rgba(21,120,27,.85)"/></marker></defs>`;
+  if(!lastBest || lastBest.fen!==fen()) return;
+  const u=lastBest.uci; const [x1,y1]=center(u.slice(0,2)), [x2,y2]=center(u.slice(2,4));
+  const len=Math.hypot(x2-x1,y2-y1), k=(len-35)/len;
+  svg.innerHTML+=`<line x1="${x1}" y1="${y1}" x2="${x1+(x2-x1)*k}" y2="${y1+(y2-y1)*k}" stroke="rgba(21,120,27,.75)" stroke-width="18" stroke-linecap="round" marker-end="url(#ah)"/>`;
+}
+function renderStatus(){
+  const s=$("status");
+  if(!state) return;
+  if(state.game_over) s.textContent=`Partie beendet: ${state.result} (${state.reason})`;
+  else s.textContent=(state.turn==="w"?"Weiß":"Schwarz")+" am Zug"+(state.check?" – Schach!":"");
+}
+function renderMoves(){
+  const m=$("moves"); m.innerHTML="";
+  hist.forEach((h,i)=>{
+    if(i%2===0){ const n=document.createElement("span"); n.className="n"; n.textContent=(i/2+1)+"."; m.appendChild(n); }
+    const e=document.createElement("span"); e.className="m";
+    const r=h.review; let sym=r&&r.symbol&&r.symbol!=="★"?r.symbol:"";
+    e.innerHTML=de(h.san)+(sym?`<b style="color:${COLORS[r.label]}">${sym}</b>`:"");
+    if(r) e.title=LABEL_DE[r.label]+" · "+r.eval;
+    m.appendChild(e);
+  });
+  m.scrollTop=m.scrollHeight;
+}
+function setEval(evalStr){
+  let wp;
+  if(evalStr.startsWith("#")) wp = evalStr.includes("-")?0:100;
+  else { const cp=parseFloat(evalStr)*100; wp=50+50*(2/(1+Math.exp(-0.00368208*cp))-1); }
+  $("evb").style.height=(100-wp)+"%";
+  const t=$("evt"); t.textContent=evalStr.startsWith("#")?"M"+evalStr.replace("#","").replace("-",""):Math.abs(parseFloat(evalStr)).toFixed(1);
+  if(wp>=50){t.style.bottom="2px";t.style.top="";t.style.color="#333";} else {t.style.top="2px";t.style.bottom="";t.style.color="#eee";}
+}
+function setBusy(b){ busy=b; $("thinking").style.display=b?"inline":"none"; ["bestBtn","aiBtn","undoBtn","newBtn"].forEach(i=>$(i).disabled=b); }
+
+async function loadState(f){ state=await api("/api/state",{fen:f}); sel=null; render(); }
+
+function humanTurn(){
+  const m=$("mode").value; if(!state || state.game_over) return false;
+  if(m==="none") return true; if(m==="ai") return false; return state.turn===m;
+}
+function clickSq(sq,p){
+  if(busy || !humanTurn()) return;
+  if(sel){
+    const cands=state.legal.filter(m=>m.startsWith(sel+sq));
+    if(cands.length===1) return doMove(cands[0]);
+    if(cands.length>1) return askPromo(cands);
+  }
+  const mine = p && ((p===p.toUpperCase())===(state.turn==="w"));
+  sel = mine && sel!==sq ? sq : null; render();
+}
+function askPromo(cands){
+  const box=$("promo"); box.innerHTML=""; box.style.display="flex";
+  ["q","r","b","n"].forEach(pc=>{ const b=document.createElement("button"); b.textContent=GLYPH[pc];
+    b.style.color=state.turn==="w"?"#fff":"#111"; b.style.textShadow="0 0 2px #000";
+    b.onclick=()=>{box.style.display="none"; doMove(cands.find(c=>c.endsWith(pc)));}; box.appendChild(b); });
+}
+async function doMove(uci){
+  sel=null; setBusy(true);
+  try{
+    const prev=fen();
+    const r=await api("/api/play",{fen:prev,move:uci,time:+$("time").value});
+    hist.push({fen:prev,san:r.san,uci:r.uci,review:r.review}); state=r; render(); showReview(r);
+  }catch(e){ $("review").innerHTML=`<span class="err">${e.message}</span>`; }
+  setBusy(false); afterMove();
+}
+function showReview(r){
+  const v=r.review;
+  if(!v){ $("review").textContent=de(r.san)+" (einziger legaler Zug)"; return; }
+  let h=`<b>${de(v.move_san)}${v.symbol&&v.symbol!=="★"?v.symbol:""}</b> <span class="tag" style="background:${COLORS[v.label]}">${LABEL_DE[v.label]}</span>
+    &nbsp;Bewertung <b>${v.eval}</b> · Gewinnchance ${v.side} ${v.win_pct}%`;
+  if(v.sacrifice_pawns) h+=`<br>Opfer: ${v.sacrificed_piece} (netto ${v.sacrifice_pawns} Bauerneinheiten)`;
+  if(["Inaccuracy","Mistake","Blunder","Good","Excellent"].includes(v.label)) h+=`<br>Besser war: <b>${de(v.best_move_san)}</b> (${v.best_eval}) – ${de(v.best_line)}`;
+  $("review").innerHTML=h; setEval(v.eval);
+}
+async function aiMove(){
+  if(!state || state.game_over) return;
+  setBusy(true);
+  try{
+    const prev=fen(), lv=+$("level").value;
+    const r=await api("/api/ai",{fen:prev,level:lv,time:+$("time").value});
+    const review = r.info ? {label:r.info.label,symbol:r.info.symbol,eval:r.info.eval} : null;
+    hist.push({fen:prev,san:r.san,uci:r.uci,review}); state=r; render();
+    $("review").innerHTML=`KI spielt <b>${de(r.san)}</b>`+(r.info?` <span class="tag" style="background:${COLORS[r.info.label]}">${LABEL_DE[r.info.label]}</span> · ${r.info.eval}<br><span style="color:var(--mute)">${de(r.info.line)}</span>`:` (Stärke ${lv})`);
+    if(r.info) setEval(r.info.eval);
+  }catch(e){ $("review").innerHTML=`<span class="err">${e.message}</span>`; }
+  setBusy(false); afterMove();
+}
+function afterMove(){
+  const m=$("mode").value;
+  if(state.game_over) return;
+  if(m==="ai" || (m!=="none" && state.turn!==m)) return void setTimeout(aiMove,250);
+  if($("autoAna").checked) analyse();
+}
+async function analyse(){
+  if(!state || state.game_over) return;
+  const tok=++anaToken, f=fen();
+  $("analysis").innerHTML=`<span style="color:var(--mute)">Rechne …</span>`;
+  try{
+    const r=await api("/api/best",{fen:f,time:+$("time").value,multipv:3});
+    if(tok!==anaToken || f!==fen()) return;
+    const L=r.lines[0]; lastBest={fen:f,uci:L.move_uci};
+    const tag=l=>["Brilliant","Great"].includes(l.label)?`<span class="tag" style="background:${COLORS[l.label]}">${l.symbol} ${LABEL_DE[l.label]}</span>`:"";
+    let h=`<div class="best">${de(L.move_san)}${["!!","!"].includes(L.symbol)?L.symbol:""} ${tag(L)}</div>
+      <div>Bewertung <b>${L.eval}</b> · Gewinnchance ${r.side_to_move} ${L.win_pct}% · Tiefe ${L.depth}</div>`;
+    if(L.sacrifice_pawns) h+=`<div>Opfer: ${L.sacrificed_piece} (netto ${L.sacrifice_pawns} BE)</div>`;
+    h+=`<div class="lines">`+r.lines.map(l=>`<div><span class="mv">${l.rank}. ${de(l.move_san)}</span><span class="ev">${l.eval}</span>${tag(l)}<span class="pv">${de(l.line)}</span></div>`).join("")+`</div>`;
+    const b=r.brilliant_candidates;
+    h+=`<div style="margin-top:6px;font-size:13px;color:var(--mute)">Brilliant-Kandidaten (${r.sacrifices_scanned} Opfer geprüft): `+
+       (b.length? b.map(x=>`<b style="color:var(--brill)">${de(x.move_san)}!!</b> (${x.eval})`).join(", "):"keine")+`</div>`;
+    $("analysis").innerHTML=h; setEval(L.eval); drawArrows();
+  }catch(e){ if(tok===anaToken) $("analysis").innerHTML=`<span class="err">${e.message}</span>`; }
+}
+async function newGame(f){ hist=[]; lastBest=null; anaToken++; $("review").textContent="–"; setEval("+0.00");
+  $("analysis").innerHTML=`<span style="color:var(--mute)">Klicke auf „Besten Zug berechnen“.</span>`;
+  await loadState(f||START); afterMove(); }
+
+$("bestBtn").onclick=analyse;
+$("aiBtn").onclick=aiMove;
+$("newBtn").onclick=()=>newGame();
+$("flipBtn").onclick=()=>{flipped=!flipped; render();};
+$("undoBtn").onclick=async()=>{
+  if(!hist.length) return; const m=$("mode").value;
+  let n = (m==="w"||m==="b") ? (state.turn===m ? 2 : 1) : 1; n=Math.min(n,hist.length);
+  const back=hist.splice(hist.length-n,n)[0]; anaToken++; lastBest=null; await loadState(back.fen);
+  if($("autoAna").checked) analyse();
+};
+$("fenBtn").onclick=async()=>{ try{ $("mode").value="none"; await newGame($("fen").value.trim()); }catch(e){ $("review").innerHTML=`<span class="err">FEN ungültig: ${e.message}</span>`; } };
+$("level").oninput=()=>{ const v=+$("level").value; $("levelv").textContent=v===20?"20 (Bester Zug)":v; };
+$("mode").onchange=()=>{ const m=$("mode").value; if(m==="b"&&!flipped||m==="w"&&flipped){flipped=m==="b";} render(); afterMove(); };
+newGame();
+</script>
+</body>
+</html>
