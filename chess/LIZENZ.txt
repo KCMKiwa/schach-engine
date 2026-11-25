@@ -1,0 +1,3 @@
+Dieser Ordner enthält python-chess 1.11.2 (https://github.com/niklasf/python-chess),
+Copyright (C) Niklas Fiekas, lizenziert unter der GNU GPL v3 oder neuer.
+Er ist mitgeliefert, damit kein pip nötig ist.

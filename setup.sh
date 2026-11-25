@@ -2,6 +2,7 @@
 # Installiert Stockfish und python-chess, falls sie fehlen. Idempotent.
 # Läuft unter Linux, macOS und Windows (Git Bash).
 set -e
+cd "$(dirname "$0")"   # python-chess liegt mitgeliefert im Ordner chess/
 
 # Python finden (unter Windows heißt es oft "python" oder "py")
 PY=""
