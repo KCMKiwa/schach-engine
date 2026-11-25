@@ -22,7 +22,16 @@ esac
 
 # python-chess
 if ! "$PY" -c "import chess" >/dev/null 2>&1; then
-  "$PY" -m pip install --user chess
+  if [ "$WINDOWS" = 0 ] && command -v apt-get >/dev/null 2>&1; then
+    # Debian/Ubuntu/WSL: Systempaket (pip fehlt dort oft oder ist "externally managed")
+    sudo apt-get install -y python3-chess || (sudo apt-get update && sudo apt-get install -y python3-chess) || true
+  fi
+  if ! "$PY" -c "import chess" >/dev/null 2>&1; then
+    "$PY" -m pip install --user chess || {
+      echo "python-chess konnte nicht installiert werden. Versuche: sudo apt-get install -y python3-pip && $PY -m pip install --user chess"
+      exit 1
+    }
+  fi
 fi
 "$PY" -c "import chess; print('python-chess', chess.__version__)"
 
