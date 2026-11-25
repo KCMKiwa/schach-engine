@@ -7,16 +7,17 @@ Brilliant-Erkennung (!!) sowie Zugbewertung wie im Chess.com-Review (Brillant, G
 ## Start
 
 ```bash
-bash setup.sh          # installiert Stockfish + python-chess, falls nötig
+sudo apt-get install -y stockfish   # python-chess liegt schon im Ordner chess/
 python3 server.py      # danach http://localhost:8000 öffnen
 ```
 
 ## Funktionen
-- Modi: gegen die KI als Weiß oder Schwarz, Analyse (beide Seiten selbst), KI gegen KI
-- KI-Stärke 0–20 (20 = immer der beste Zug laut Engine-Analyse)
-- „Besten Zug berechnen“: Pfeil auf dem Brett, Bewertung, Hauptvarianten, Brilliant-Kandidaten
-- Jeder Zug wird klassifiziert, mit „Besser war …“ bei Fehlern
-- Eval-Balken, Zugliste in deutscher Notation, Zug zurück, Brett drehen, FEN laden
+- Am Anfang wählst du deine Seite (Weiß oder Schwarz), das Brett dreht sich passend.
+- Du bewegst **beide Seiten selbst** (Figur ziehen oder anklicken), z. B. um eine laufende Partie nachzuspielen.
+- Die Engine rechnet **nur, wenn deine Seite am Zug ist**: Pfeil auf dem Brett, Bewertung, Top-3-Varianten, Brilliant-Kandidaten.
+- „Besten Zug ausführen“ spielt ihn für dich, oder automatisch per Häkchen.
+- Deine Züge werden klassifiziert (Brillant … Patzer), mit „Besser war …“ bei Fehlern.
+- Eval-Balken, Zugliste in deutscher Notation, Zug zurück, Brett drehen, FEN laden.
 
 ## Dateien
 - `server.py` – Webserver + API (`/api/best`, `/api/play`, `/api/ai`, `/api/state`)

@@ -62,6 +62,16 @@ label{color:var(--mute);font-size:13px}
 #moves .m{padding:1px 4px;border-radius:4px;cursor:default}
 #review{font-size:14px;min-height:20px}
 .err{color:var(--blun)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;padding:7px 14px;border:0;background:var(--bg);color:var(--ink);cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+.hint{font-size:12.5px;color:var(--mute)}
+.wait{color:var(--mute)}
+.sq .p.dragging{opacity:.25}
+#ghost{position:fixed;pointer-events:none;z-index:50;font-size:min(9.5vw,60px);line-height:1;transform:translate(-50%,-50%);display:none}
+#ghost.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,1px 1px 3px rgba(0,0,0,.6)}
+#ghost.b{color:#111;text-shadow:0 0 1px #fff8}
+#board{touch-action:none}
 </style>
 </head>
 <body>
@@ -71,41 +81,36 @@ label{color:var(--mute);font-size:13px}
     <div class="boardwrap">
       <div class="evalbar" id="evalbar"><div class="b" id="evb" style="height:50%"></div><div class="w"></div><div class="t" id="evt" style="bottom:2px;color:#333">0.0</div></div>
       <div id="board"><svg id="arrows" viewBox="0 0 800 800"></svg><div id="promo"></div></div>
+      <div id="ghost"></div>
     </div>
   </div>
   <aside>
     <div class="card">
       <div class="row"><span id="status">Weiß am Zug</span><span id="thinking">⏳ Engine rechnet …</span></div>
       <div class="row">
-        <label>Modus</label>
-        <select id="mode">
-          <option value="w">Ich spiele Weiß gegen KI</option>
-          <option value="b">Ich spiele Schwarz gegen KI</option>
-          <option value="none">Analyse (beide Seiten selbst)</option>
-          <option value="ai">KI gegen KI</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>KI-Stärke</label><input type="range" id="level" min="0" max="20" value="20"><span id="levelv">20 (Bester Zug)</span>
+        <label>Ich spiele</label>
+        <div class="seg" id="side">
+          <button data-c="w" class="on">♔ Weiß</button><button data-c="b">♚ Schwarz</button>
+        </div>
       </div>
       <div class="row">
         <label>Denkzeit</label>
-        <select id="time"><option value="0.5">0,5 s</option><option value="1" selected>1 s</option><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option></select>
-        <label><input type="checkbox" id="autoAna" checked> Live-Analyse</label>
+        <select id="time"><option value="0.5">0,5 s</option><option value="1">1 s</option><option value="2" selected>2 s</option><option value="3">3 s</option><option value="5">5 s</option></select>
+        <label><input type="checkbox" id="autoPlay"> Besten Zug automatisch für mich ausführen</label>
       </div>
       <div class="row">
-        <button class="b primary" id="bestBtn">💡 Besten Zug berechnen</button>
-        <button class="b" id="aiBtn">🤖 KI zieht</button>
+        <button class="b primary" id="playBest" disabled>▶ Besten Zug ausführen</button>
       </div>
       <div class="row">
         <button class="b" id="newBtn">Neue Partie</button>
         <button class="b" id="undoBtn">↶ Zurück</button>
         <button class="b" id="flipBtn">⇅ Drehen</button>
       </div>
+      <div class="hint">Du ziehst beide Seiten selbst (Figur ziehen oder anklicken). Die Engine rechnet nur, wenn <b id="sideName">Weiß</b> am Zug ist.</div>
     </div>
     <div class="card">
-      <h3>Engine-Analyse</h3>
-      <div id="analysis"><span style="color:var(--mute)">Klicke auf „Besten Zug berechnen“.</span></div>
+      <h3>Bester Zug für dich</h3>
+      <div id="analysis"></div>
     </div>
     <div class="card">
       <h3>Letzter Zug</h3>
@@ -132,10 +137,13 @@ const $ = id => document.getElementById(id);
 
 let hist = [];            // [{fen, san, uci, review}]
 let state = null;         // Server-Status der aktuellen Stellung
-let flipped = false, sel = null, busy = false, anaToken = 0, lastBest = null;
+let me = "w";             // meine Farbe
+let flipped = false, sel = null, busy = false, anaToken = 0, lastBest = null, drag = null;
 
 const de = s => s ? s.replace(/[NBRQK]/g, c => ({N:"S",B:"L",R:"T",Q:"D",K:"K"})[c]) : s;
 const fen = () => state ? state.fen : START;
+const sideName = c => c==="w" ? "Weiß" : "Schwarz";
+const myTurn = () => state && !state.game_over && state.turn===me;
 
 async function api(path, body){
   const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -146,7 +154,7 @@ function parseBoard(f){
   rows.forEach((row,ri)=>{let fi=0;for(const ch of row){ if(/\d/.test(ch)) fi+=+ch; else { b["abcdefgh"[fi]+(8-ri)]=ch; fi++; } }});
   return b;
 }
-function center(sq){ let f="abcdefgh".indexOf(sq[0]), r=+sq[1]-1; const x=flipped?7-f:f, y=flipped?r:7-r; return [x*100+50,y*100+50]; }
+function center(sq){ const f="abcdefgh".indexOf(sq[0]), r=+sq[1]-1; const x=flipped?7-f:f, y=flipped?r:7-r; return [x*100+50,y*100+50]; }
 
 function render(){
   const board=$("board"), pieces=parseBoard(fen());
@@ -158,7 +166,7 @@ function render(){
   for(let y=0;y<8;y++) for(let x=0;x<8;x++){
     const f=flipped?7-x:x, r=flipped?y:7-y, sq="abcdefgh"[f]+(r+1);
     const d=document.createElement("div");
-    d.className="sq "+((f+r)%2? "l":"d");
+    d.className="sq "+((f+r)%2? "l":"d"); d.dataset.sq=sq;
     if(last && (last.uci.slice(0,2)===sq||last.uci.slice(2,4)===sq)) d.classList.add("last");
     if(sel===sq) d.classList.add("sel");
     if(kingSq===sq) d.classList.add("chk");
@@ -170,12 +178,11 @@ function render(){
     if(last && last.review && last.uci.slice(2,4)===sq && last.review.symbol){
       const bd=document.createElement("span"); bd.className="badge"; bd.style.background=COLORS[last.review.label]; bd.textContent=last.review.symbol; d.appendChild(bd);
     }
-    d.onclick=()=>clickSq(sq, p);
     board.insertBefore(d, $("arrows"));
   }
-  drawArrows();
-  renderStatus(); renderMoves();
+  drawArrows(); renderStatus(); renderMoves();
   $("fen").value=fen();
+  $("playBest").disabled = busy || !myTurn() || !lastBest || lastBest.fen!==fen();
 }
 function drawArrows(){
   const svg=$("arrows"); svg.innerHTML=`<defs><marker id="ah" markerWidth="4" markerHeight="4" refX="2.2" refY="2" orient="auto"><path d="M0,0 L4,2 L0,4 z" fill="rgba(21,120,27,.85)"/></marker></defs>`;
@@ -185,17 +192,17 @@ function drawArrows(){
   svg.innerHTML+=`<line x1="${x1}" y1="${y1}" x2="${x1+(x2-x1)*k}" y2="${y1+(y2-y1)*k}" stroke="rgba(21,120,27,.75)" stroke-width="18" stroke-linecap="round" marker-end="url(#ah)"/>`;
 }
 function renderStatus(){
-  const s=$("status");
   if(!state) return;
+  const s=$("status");
   if(state.game_over) s.textContent=`Partie beendet: ${state.result} (${state.reason})`;
-  else s.textContent=(state.turn==="w"?"Weiß":"Schwarz")+" am Zug"+(state.check?" – Schach!":"");
+  else s.textContent=sideName(state.turn)+" am Zug"+(state.check?" – Schach!":"")+(state.turn===me?" (du)":" (Gegner)");
 }
 function renderMoves(){
   const m=$("moves"); m.innerHTML="";
   hist.forEach((h,i)=>{
     if(i%2===0){ const n=document.createElement("span"); n.className="n"; n.textContent=(i/2+1)+"."; m.appendChild(n); }
     const e=document.createElement("span"); e.className="m";
-    const r=h.review; let sym=r&&r.symbol&&r.symbol!=="★"?r.symbol:"";
+    const r=h.review; const sym=r&&r.symbol&&r.symbol!=="★"?r.symbol:"";
     e.innerHTML=de(h.san)+(sym?`<b style="color:${COLORS[r.label]}">${sym}</b>`:"");
     if(r) e.title=LABEL_DE[r.label]+" · "+r.eval;
     m.appendChild(e);
@@ -210,104 +217,130 @@ function setEval(evalStr){
   const t=$("evt"); t.textContent=evalStr.startsWith("#")?"M"+evalStr.replace("#","").replace("-",""):Math.abs(parseFloat(evalStr)).toFixed(1);
   if(wp>=50){t.style.bottom="2px";t.style.top="";t.style.color="#333";} else {t.style.top="2px";t.style.bottom="";t.style.color="#eee";}
 }
-function setBusy(b){ busy=b; $("thinking").style.display=b?"inline":"none"; ["bestBtn","aiBtn","undoBtn","newBtn"].forEach(i=>$(i).disabled=b); }
+function setBusy(b){ busy=b; ["undoBtn","newBtn"].forEach(i=>$(i).disabled=b); render(); }
 
 async function loadState(f){ state=await api("/api/state",{fen:f}); sel=null; render(); }
 
-function humanTurn(){
-  const m=$("mode").value; if(!state || state.game_over) return false;
-  if(m==="none") return true; if(m==="ai") return false; return state.turn===m;
+/* ---------- Figuren bewegen: beide Seiten, per Klick oder Ziehen ---------- */
+const movable = p => p && state && !state.game_over && ((p===p.toUpperCase())===(state.turn==="w"));
+function tryMove(from,to){
+  const cands=state.legal.filter(m=>m.startsWith(from+to));
+  if(cands.length===1){ doMove(cands[0]); return true; }
+  if(cands.length>1){ askPromo(cands); return true; }
+  return false;
 }
-function clickSq(sq,p){
-  if(busy || !humanTurn()) return;
-  if(sel){
-    const cands=state.legal.filter(m=>m.startsWith(sel+sq));
-    if(cands.length===1) return doMove(cands[0]);
-    if(cands.length>1) return askPromo(cands);
-  }
-  const mine = p && ((p===p.toUpperCase())===(state.turn==="w"));
-  sel = mine && sel!==sq ? sq : null; render();
-}
+function sqFromPoint(x,y){ const el=document.elementFromPoint(x,y); const s=el&&el.closest(".sq"); return s?s.dataset.sq:null; }
+$("board").addEventListener("pointerdown",e=>{
+  if(busy || e.button>0) return;
+  const s=e.target.closest(".sq"); if(!s) return;
+  const sq=s.dataset.sq, p=parseBoard(fen())[sq];
+  if(sel && sq!==sel && tryMove(sel,sq)){ sel=null; return; }
+  if(!movable(p)){ sel=null; render(); return; }
+  e.preventDefault();
+  const wasSel = sel===sq; sel=sq; render();
+  const g=$("ghost"); g.textContent=GLYPH[p.toLowerCase()]; g.className=p===p.toUpperCase()?"w":"b";
+  drag={from:sq,wasSel,moved:false,x:e.clientX,y:e.clientY};
+  g.style.left=e.clientX+"px"; g.style.top=e.clientY+"px";
+});
+window.addEventListener("pointermove",e=>{
+  if(!drag) return;
+  if(!drag.moved && Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<5) return;
+  if(!drag.moved){ drag.moved=true; $("ghost").style.display="block";
+    const pe=document.querySelector(`.sq[data-sq="${drag.from}"] .p`); if(pe) pe.classList.add("dragging"); }
+  $("ghost").style.left=e.clientX+"px"; $("ghost").style.top=e.clientY+"px";
+});
+window.addEventListener("pointerup",e=>{
+  if(!drag) return;
+  const d=drag; drag=null; $("ghost").style.display="none";
+  if(d.moved){
+    const to=sqFromPoint(e.clientX,e.clientY);
+    if(to && to!==d.from && tryMove(d.from,to)){ sel=null; return; }
+    render();
+  } else if(d.wasSel){ sel=null; render(); }
+});
 function askPromo(cands){
   const box=$("promo"); box.innerHTML=""; box.style.display="flex";
   ["q","r","b","n"].forEach(pc=>{ const b=document.createElement("button"); b.textContent=GLYPH[pc];
     b.style.color=state.turn==="w"?"#fff":"#111"; b.style.textShadow="0 0 2px #000";
     b.onclick=()=>{box.style.display="none"; doMove(cands.find(c=>c.endsWith(pc)));}; box.appendChild(b); });
 }
+
 async function doMove(uci){
-  sel=null; setBusy(true);
+  sel=null; anaToken++;
+  const mine = state.turn===me;                 // nur eigene Züge werden bewertet (Engine rechnet nur für dich)
+  setBusy(true);
   try{
     const prev=fen();
-    const r=await api("/api/play",{fen:prev,move:uci,time:+$("time").value});
-    hist.push({fen:prev,san:r.san,uci:r.uci,review:r.review}); state=r; render(); showReview(r);
+    const r=await api("/api/play",{fen:prev,move:uci,review:mine,time:Math.min(1,+$("time").value)});
+    hist.push({fen:prev,san:r.san,uci:r.uci,review:r.review}); state=r; showReview(r, mine);
   }catch(e){ $("review").innerHTML=`<span class="err">${e.message}</span>`; }
   setBusy(false); afterMove();
 }
-function showReview(r){
+function showReview(r, mine){
   const v=r.review;
+  if(!mine){ $("review").innerHTML=`Gegner spielt <b>${de(r.san)}</b>`; return; }
   if(!v){ $("review").textContent=de(r.san)+" (einziger legaler Zug)"; return; }
-  let h=`<b>${de(v.move_san)}${v.symbol&&v.symbol!=="★"?v.symbol:""}</b> <span class="tag" style="background:${COLORS[v.label]}">${LABEL_DE[v.label]}</span>
-    &nbsp;Bewertung <b>${v.eval}</b> · Gewinnchance ${v.side} ${v.win_pct}%`;
+  let h=`Du spielst <b>${de(v.move_san)}${v.symbol&&v.symbol!=="★"?v.symbol:""}</b> <span class="tag" style="background:${COLORS[v.label]}">${LABEL_DE[v.label]}</span>
+    &nbsp;Bewertung <b>${v.eval}</b>`;
   if(v.sacrifice_pawns) h+=`<br>Opfer: ${v.sacrificed_piece} (netto ${v.sacrifice_pawns} Bauerneinheiten)`;
   if(["Inaccuracy","Mistake","Blunder","Good","Excellent"].includes(v.label)) h+=`<br>Besser war: <b>${de(v.best_move_san)}</b> (${v.best_eval}) – ${de(v.best_line)}`;
   $("review").innerHTML=h; setEval(v.eval);
 }
-async function aiMove(){
-  if(!state || state.game_over) return;
-  setBusy(true);
-  try{
-    const prev=fen(), lv=+$("level").value;
-    const r=await api("/api/ai",{fen:prev,level:lv,time:+$("time").value});
-    const review = r.info ? {label:r.info.label,symbol:r.info.symbol,eval:r.info.eval} : null;
-    hist.push({fen:prev,san:r.san,uci:r.uci,review}); state=r; render();
-    $("review").innerHTML=`KI spielt <b>${de(r.san)}</b>`+(r.info?` <span class="tag" style="background:${COLORS[r.info.label]}">${LABEL_DE[r.info.label]}</span> · ${r.info.eval}<br><span style="color:var(--mute)">${de(r.info.line)}</span>`:` (Stärke ${lv})`);
-    if(r.info) setEval(r.info.eval);
-  }catch(e){ $("review").innerHTML=`<span class="err">${e.message}</span>`; }
-  setBusy(false); afterMove();
-}
 function afterMove(){
-  const m=$("mode").value;
-  if(state.game_over) return;
-  if(m==="ai" || (m!=="none" && state.turn!==m)) return void setTimeout(aiMove,250);
-  if($("autoAna").checked) analyse();
+  if(!state) return;
+  if(state.game_over){ $("analysis").innerHTML=`<span class="wait">Partie beendet.</span>`; return; }
+  if(myTurn()) analyse();
+  else { lastBest=null; render(); $("analysis").innerHTML=`<span class="wait">Gegner (${sideName(state.turn)}) am Zug – zieh seinen Zug auf dem Brett. Danach rechnet die Engine deinen besten Zug.</span>`; }
 }
 async function analyse(){
-  if(!state || state.game_over) return;
+  if(!myTurn()) return;
   const tok=++anaToken, f=fen();
-  $("analysis").innerHTML=`<span style="color:var(--mute)">Rechne …</span>`;
+  $("thinking").style.display="inline";
+  $("analysis").innerHTML=`<span class="wait">Rechne besten Zug für ${sideName(me)} …</span>`;
   try{
     const r=await api("/api/best",{fen:f,time:+$("time").value,multipv:3});
     if(tok!==anaToken || f!==fen()) return;
     const L=r.lines[0]; lastBest={fen:f,uci:L.move_uci};
     const tag=l=>["Brilliant","Great"].includes(l.label)?`<span class="tag" style="background:${COLORS[l.label]}">${l.symbol} ${LABEL_DE[l.label]}</span>`:"";
     let h=`<div class="best">${de(L.move_san)}${["!!","!"].includes(L.symbol)?L.symbol:""} ${tag(L)}</div>
-      <div>Bewertung <b>${L.eval}</b> · Gewinnchance ${r.side_to_move} ${L.win_pct}% · Tiefe ${L.depth}</div>`;
+      <div>Bewertung <b>${L.eval}</b> · deine Gewinnchance ${L.win_pct}% · Tiefe ${L.depth}</div>`;
     if(L.sacrifice_pawns) h+=`<div>Opfer: ${L.sacrificed_piece} (netto ${L.sacrifice_pawns} BE)</div>`;
     h+=`<div class="lines">`+r.lines.map(l=>`<div><span class="mv">${l.rank}. ${de(l.move_san)}</span><span class="ev">${l.eval}</span>${tag(l)}<span class="pv">${de(l.line)}</span></div>`).join("")+`</div>`;
     const b=r.brilliant_candidates;
     h+=`<div style="margin-top:6px;font-size:13px;color:var(--mute)">Brilliant-Kandidaten (${r.sacrifices_scanned} Opfer geprüft): `+
        (b.length? b.map(x=>`<b style="color:var(--brill)">${de(x.move_san)}!!</b> (${x.eval})`).join(", "):"keine")+`</div>`;
-    $("analysis").innerHTML=h; setEval(L.eval); drawArrows();
+    $("analysis").innerHTML=h; setEval(L.eval); render();
+    if($("autoPlay").checked && myTurn() && fen()===f) setTimeout(()=>{ if(fen()===f && !busy) doMove(L.move_uci); },400);
   }catch(e){ if(tok===anaToken) $("analysis").innerHTML=`<span class="err">${e.message}</span>`; }
+  finally{ if(tok===anaToken) $("thinking").style.display="none"; }
 }
-async function newGame(f){ hist=[]; lastBest=null; anaToken++; $("review").textContent="–"; setEval("+0.00");
-  $("analysis").innerHTML=`<span style="color:var(--mute)">Klicke auf „Besten Zug berechnen“.</span>`;
-  await loadState(f||START); afterMove(); }
+async function newGame(f){
+  hist=[]; lastBest=null; anaToken++; $("review").textContent="–"; setEval("+0.00");
+  await loadState(f||START); afterMove();
+}
+function setSide(c){
+  me=c; flipped = c==="b";
+  document.querySelectorAll("#side button").forEach(b=>b.classList.toggle("on",b.dataset.c===c));
+  $("sideName").textContent=sideName(c);
+}
 
-$("bestBtn").onclick=analyse;
-$("aiBtn").onclick=aiMove;
+document.querySelectorAll("#side button").forEach(b=>b.onclick=()=>{
+  if(b.dataset.c===me) return;
+  if(hist.length && !confirm("Seite wechseln und neue Partie starten?")) return;
+  setSide(b.dataset.c); newGame();
+});
+$("playBest").onclick=()=>{ if(lastBest && lastBest.fen===fen() && myTurn()) doMove(lastBest.uci); };
+$("autoPlay").onchange=()=>{ if($("autoPlay").checked && lastBest && lastBest.fen===fen() && myTurn()) doMove(lastBest.uci); };
+$("time").onchange=()=>{ if(myTurn()) analyse(); };
 $("newBtn").onclick=()=>newGame();
 $("flipBtn").onclick=()=>{flipped=!flipped; render();};
 $("undoBtn").onclick=async()=>{
-  if(!hist.length) return; const m=$("mode").value;
-  let n = (m==="w"||m==="b") ? (state.turn===m ? 2 : 1) : 1; n=Math.min(n,hist.length);
-  const back=hist.splice(hist.length-n,n)[0]; anaToken++; lastBest=null; await loadState(back.fen);
-  if($("autoAna").checked) analyse();
+  if(!hist.length) return;
+  const back=hist.pop(); anaToken++; lastBest=null; await loadState(back.fen);
+  $("review").textContent="–"; afterMove();
 };
-$("fenBtn").onclick=async()=>{ try{ $("mode").value="none"; await newGame($("fen").value.trim()); }catch(e){ $("review").innerHTML=`<span class="err">FEN ungültig: ${e.message}</span>`; } };
-$("level").oninput=()=>{ const v=+$("level").value; $("levelv").textContent=v===20?"20 (Bester Zug)":v; };
-$("mode").onchange=()=>{ const m=$("mode").value; if(m==="b"&&!flipped||m==="w"&&flipped){flipped=m==="b";} render(); afterMove(); };
-newGame();
+$("fenBtn").onclick=async()=>{ try{ await newGame($("fen").value.trim()); }catch(e){ $("review").innerHTML=`<span class="err">FEN ungültig: ${e.message}</span>`; } };
+setSide("w"); newGame();
 </script>
 </body>
 </html>
