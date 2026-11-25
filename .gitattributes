@@ -1,0 +1,3 @@
+# Skripte immer mit LF auschecken (auch unter Windows), sonst bricht bash ab
+* text=auto eol=lf
+*.png binary

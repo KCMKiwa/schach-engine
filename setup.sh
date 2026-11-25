@@ -1,22 +1,55 @@
 #!/usr/bin/env bash
 # Installiert Stockfish und python-chess, falls sie fehlen. Idempotent.
+# Läuft unter Linux, macOS und Windows (Git Bash).
 set -e
-if ! command -v stockfish >/dev/null 2>&1 && [ ! -x /usr/games/stockfish ] && [ -z "$STOCKFISH_PATH" ]; then
-  if command -v apt-get >/dev/null 2>&1; then
-    (apt-get install -y stockfish >/dev/null 2>&1 || (apt-get update >/dev/null 2>&1 && apt-get install -y stockfish >/dev/null 2>&1)) || true
-  elif command -v brew >/dev/null 2>&1; then
-    brew install stockfish >/dev/null 2>&1 || true
+
+# Python finden (unter Windows heißt es oft "python" oder "py")
+PY=""
+for c in python3 python py; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys; sys.exit(sys.version_info < (3, 8))" >/dev/null 2>&1; then
+    PY="$c"; break
   fi
+done
+if [ -z "$PY" ]; then
+  echo "Python 3.8+ nicht gefunden. Bitte installieren: https://www.python.org/downloads/"
+  exit 1
 fi
-if ! python3 -c "import chess" >/dev/null 2>&1; then
-  pip install chess >/dev/null 2>&1 || {
-    # Fallback: Quellpaket direkt kopieren (reines Python, kein Build nötig)
-    tmp=$(mktemp -d)
-    pip download chess --no-deps --no-binary :all: -d "$tmp" >/dev/null 2>&1 || pip download chess --no-deps -d "$tmp" >/dev/null 2>&1
-    cd "$tmp" && tar xzf chess-*.tar.gz 2>/dev/null || true
-    site=$(python3 -c "import site;print(site.getsitepackages()[0])")
-    cp -r "$tmp"/chess-*/chess "$site/"
-  }
+
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) WINDOWS=1 ;;
+  *) WINDOWS=0 ;;
+esac
+
+# python-chess
+if ! "$PY" -c "import chess" >/dev/null 2>&1; then
+  "$PY" -m pip install --user chess
 fi
-python3 -c "import chess; print('python-chess', chess.__version__)"
-(command -v stockfish || ls /usr/games/stockfish || echo "$STOCKFISH_PATH") 2>/dev/null | head -1 | sed 's/^/stockfish: /'
+"$PY" -c "import chess; print('python-chess', chess.__version__)"
+
+# Stockfish
+if [ -n "$STOCKFISH_PATH" ] || command -v stockfish >/dev/null 2>&1 || [ -x /usr/games/stockfish ]; then
+  :
+elif [ "$WINDOWS" = 1 ]; then
+  if command -v winget >/dev/null 2>&1; then
+    winget install --accept-package-agreements --accept-source-agreements -e --name Stockfish || true
+  fi
+elif command -v apt-get >/dev/null 2>&1; then
+  sudo apt-get install -y stockfish || (sudo apt-get update && sudo apt-get install -y stockfish) || true
+elif command -v brew >/dev/null 2>&1; then
+  brew install stockfish || true
+fi
+
+SF="${STOCKFISH_PATH:-$(command -v stockfish 2>/dev/null || ls /usr/games/stockfish 2>/dev/null || true)}"
+if [ -n "$SF" ]; then
+  echo "stockfish: $SF"
+  echo
+  echo "Fertig. Starten mit:  $PY server.py   und dann http://localhost:8000 öffnen."
+else
+  echo
+  echo "Stockfish wurde nicht gefunden."
+  echo "1. Herunterladen: https://stockfishchess.org/download/"
+  echo "2. Den Pfad zur stockfish-Datei angeben, z.B. (Git Bash):"
+  echo "     export STOCKFISH_PATH=\"/c/Tools/stockfish/stockfish-windows-x86-64-avx2.exe\""
+  echo "   oder beim Start:  $PY server.py --engine \"C:\\Tools\\stockfish\\stockfish.exe\""
+  exit 1
+fi

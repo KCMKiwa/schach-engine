@@ -20,13 +20,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, "static")
 
 _engine = None
+_engine_path = None
 _lock = threading.Lock()
 
 
 def engine():
     global _engine
     if _engine is None:
-        _engine = chess.engine.SimpleEngine.popen_uci(analyze.find_engine())
+        _engine = chess.engine.SimpleEngine.popen_uci(analyze.find_engine(_engine_path))
         try:
             _engine.configure({"Threads": max(1, (os.cpu_count() or 2) - 1), "Hash": 256})
         except chess.engine.EngineError:
@@ -142,7 +143,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--engine", help="Pfad zur Stockfish-Datei (sonst STOCKFISH_PATH oder PATH)")
     a = ap.parse_args()
+    global _engine_path
+    _engine_path = a.engine
     engine()
     print(f"Schach-Engine läuft auf http://{a.host}:{a.port}  (Strg+C zum Beenden)")
     try:
